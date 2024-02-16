@@ -94,11 +94,14 @@ class EdarchimbaudDatafeed(BaseDatafeed):
 
         dataset = load_dataset(f"edarchimbaud/timeseries-{ea_interval}-stocks")
         df: DataFrame = dataset["train"].to_pandas()
-        df["date"] = to_datetime(df["date"])
+
+        #Handle 1m data
+        if "date" in df.columns:
+            df["datetime"] = to_datetime(df["date"])
         index: ndarray = (
             (df.symbol == ea_symbol)
-            & (df.date >= datetime64(start))
-            & (df.date <= datetime64(end))
+            & (df.datetime >= datetime64(start))
+            & (df.datetime <= datetime64(end))
         )
         df = df.loc[index, :]
 
@@ -109,9 +112,9 @@ class EdarchimbaudDatafeed(BaseDatafeed):
             df.fillna(0, inplace=True)
 
             for row in df.itertuples():
-                dt: datetime = row.date.to_pydatetime() - adjustment
+                dt: datetime = row.datetime.to_pydatetime() - adjustment
                 dt: datetime = dt.replace(tzinfo=NYC_TZ)
-                adj_factor: float = row.adj_close / row.close
+                adj_factor: float = row.adj_close / row.close if "adj_close" in row._fields else 1
 
                 bar: BarData = BarData(
                     symbol=symbol,
@@ -121,9 +124,9 @@ class EdarchimbaudDatafeed(BaseDatafeed):
                     open_price=round_to(row.open * adj_factor, 0.000001),
                     high_price=round_to(row.high * adj_factor, 0.000001),
                     low_price=round_to(row.low * adj_factor, 0.000001),
-                    close_price=round_to(row.adj_close, 0.000001),
+                    close_price=round_to(row.adj_close, 0.000001) if "adj_close" in row._fields else round_to(row.close, 0.000001),
                     volume=row.volume,
-                    turnover=row.volume * row.adj_close,
+                    turnover=row.volume * row.adj_close if "adj_close" in row._fields else row.close,
                     open_interest=0,
                     gateway_name="EA",
                 )
